@@ -13,6 +13,9 @@ import java.util.Map.Entry;
 import java.util.Objects;
 import java.util.Set;
 
+import io.mosip.credentialstore.util.VIDUtil;
+import io.mosip.idrepository.core.dto.*;
+
 import org.json.simple.JSONArray;
 import org.json.simple.JSONObject;
 import org.mvel2.MVEL;
@@ -81,12 +84,18 @@ public class CredentialProvider {
 	@Autowired
 	private CbeffUtil cbeffutil;
 
+	@Autowired
+	VIDUtil vidUtil;
+
 	@Autowired(required = true)
 	@Qualifier("varres")
 	VariableResolverFactory functionFactory;
 
 	@Value("${credential.service.dob.format}")
 	private String dobFormat;
+
+	@Value("${credential.service.default.vid.type:PERPETUAL}")
+	private String defaultVidType;
 
 	private static final Logger LOGGER = IdRepoLogger.getLogger(CredentialProvider.class);
 	/**
@@ -232,6 +241,23 @@ public class CredentialProvider {
 						attributesMap.put(key, formattedObject);
 					} else if (attribute.equalsIgnoreCase(CredentialConstants.ENCRYPTIONKEY)) {
 						additionalData.put(key.getAttributeName(), credentialServiceRequestDto.getEncryptionKey());
+					} else if(attribute.equalsIgnoreCase(CredentialConstants.VID)){
+						VidInfoDTO vidInfoDTO;
+						VidResponseDTO vidResponseDTO;
+						String vidType= key.getSource().get(0).getFilter().get(0).getType()==null?defaultVidType:key.getSource().get(0).getFilter().get(0).getType();
+						if(key.getFormat().equalsIgnoreCase(CredentialConstants.RETRIEVE)) {
+							vidInfoDTO = vidUtil.getVIDData(identity.get("UIN").toString(), vidType,null);
+							if (vidInfoDTO == null) {
+								vidResponseDTO=vidUtil.generateVID(identity.get("UIN").toString(), vidType);
+								vidInfoDTO = vidUtil.getVIDData(identity.get("UIN").toString(), vidType,vidResponseDTO.getVid());
+							}
+						}else {
+							vidResponseDTO=vidUtil.generateVID(identity.get("UIN").toString(), vidType);
+							vidInfoDTO = vidUtil.getVIDData(identity.get("UIN").toString(),vidType,vidResponseDTO.getVid());
+						}
+						attributesMap.put(key, vidInfoDTO.getVid());
+						additionalData.put("ExpiryTimestamp", vidInfoDTO.getExpiryTimestamp().toString());
+						additionalData.put("TransactionLimit", vidInfoDTO.getTransactionLimit());
 					}
 			}
 		}
